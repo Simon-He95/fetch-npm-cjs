@@ -5,13 +5,13 @@ export function fetchFromCjs(cacheFetch = new Map()) {
   return {
     async fetch(options: {
       name: string
-      retry: number
-      timeout: number
+      retry?: number
+      timeout?: number
       remoteUri?: string
     } | {
       name?: string
-      retry: number
-      timeout: number
+      retry?: number
+      timeout?: number
       remoteUri: string
     }) {
       const { name, retry = 3, timeout = 5000, remoteUri } = options
