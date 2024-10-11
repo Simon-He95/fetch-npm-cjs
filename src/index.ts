@@ -9,14 +9,16 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
       timeout?: number
       remoteUri?: string
       output?: string
+      version?: string
     } | {
       name?: string
       retry?: number
       timeout?: number
       remoteUri: string
       output?: string
+      version?: string
     }) {
-      const { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs' } = options
+      let { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs', version } = options
       let scriptContent
       if (remoteUri) {
         const key = remoteUri
@@ -26,12 +28,13 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
         cacheFetch.set(key, scriptContent)
       }
       else if (name) {
-        let version = ''
-        try {
-          version = await latestVersion(name, { timeout: 5000, concurrency: 3 })
-        }
-        catch (error: any) {
-          throw new Error(`Failed to get the latest version of ${name}: ${error.message}`)
+        if (!version) {
+          try {
+            version = await latestVersion(name, { timeout: 5000, concurrency: 3 })
+          }
+          catch (error: any) {
+            throw new Error(`Failed to get the latest version of ${name}: ${error.message}`)
+          }
         }
 
         const key = `${name}@${version}`
@@ -108,3 +111,10 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
     },
   }
 }
+
+const { fetch } = fetchFromCjs()
+
+fetch({
+  name: 'axios',
+  remoteUri: 'https://cdn.jsdelivr.net/npm/axios/dist/index.cjs',
+})
