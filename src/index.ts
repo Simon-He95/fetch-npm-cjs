@@ -111,10 +111,3 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
     },
   }
 }
-
-const { fetch } = fetchFromCjs()
-
-fetch({
-  name: 'axios',
-  remoteUri: 'https://cdn.jsdelivr.net/npm/axios/dist/index.cjs',
-})
