@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
+import { fetchFromCjs } from '../src'
 
 describe('should', () => {
-  it('exported', () => {
-    expect(1).toEqual(1)
+  it('exported', async () => {
+    const { fetch } = fetchFromCjs()
+    expect(await fetch({
+      name: '@common-intellisense/element-plus2',
+    })).toMatchInlineSnapshot(`
+      {
+        "elementPlus2": [Function],
+        "elementPlus2Components": [Function],
+      }
+    `)
   })
 })

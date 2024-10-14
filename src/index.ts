@@ -36,17 +36,15 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
             throw new Error(`Failed to get the latest version of ${name}: ${error.message}`)
           }
         }
-
         const key = `${name}@${version}`
         scriptContent = cacheFetch.has(key)
           ? cacheFetch.get(key)
           : await Promise.any([
             ofetch(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
             ofetch(`https://unpkg.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text' }),
-            ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text' }),
-            ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text' }),
-            ofetch(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, { responseType: 'text' }),
+            ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+            ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+            ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
           ])
         cacheFetch.set(key, scriptContent)
       }
@@ -101,7 +99,6 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
             import(`https://registry.npmmirror.com/${key}/dist/index.mjs`),
             import(`https://registry.npmjs.org/${key}/dist/index.mjs`),
             import(`https://r.cnpmjs.org/${key}/dist/index.mjs`),
-            import(`https://cdn.jsdelivr.net/npm/${key}/dist/index.mjs`),
           ])
         // https://esm.sh/@common-intellisense/element-ui2
         cacheFetch.set(key, moduleExports)
