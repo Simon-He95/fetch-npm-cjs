@@ -10,6 +10,7 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
       remoteUri?: string
       output?: string
       version?: string
+      privateResource?: string
     } | {
       name?: string
       retry?: number
@@ -17,8 +18,9 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
       remoteUri: string
       output?: string
       version?: string
+      privateResource?: string
     }) {
-      let { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs', version } = options
+      let { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs', version, privateResource } = options
       let scriptContent
       if (remoteUri) {
         const key = remoteUri
@@ -45,6 +47,7 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
             ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
             ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
             ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+            privateResource && ofetch(`${privateResource}/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
           ])
         cacheFetch.set(key, scriptContent)
       }
