@@ -5,11 +5,12 @@ describe('should', () => {
   it('exported', async () => {
     const { fetch } = fetchFromCjs()
     expect(await fetch({
-      name: '@common-intellisense/element-plus2',
+      name: '@common-intellisense/element-ui2',
+      version: '0.0.3',
     })).toMatchInlineSnapshot(`
       {
-        "elementPlus2": [Function],
-        "elementPlus2Components": [Function],
+        "elementUi2": [Function],
+        "elementUi2Components": [Function],
       }
     `)
   })

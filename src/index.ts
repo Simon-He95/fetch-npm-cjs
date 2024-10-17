@@ -48,7 +48,7 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
             ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
             ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
             privateResource && ofetch(`${privateResource}/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-          ])
+          ].filter(Boolean))
         cacheFetch.set(key, scriptContent)
       }
       if (!scriptContent)
