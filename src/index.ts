@@ -66,6 +66,43 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
   }
 }
 
+export function fetchFromCjsForCommonIntellisense() {
+  return {
+    async fetch(options: {
+      name: string
+      retry?: number
+      timeout?: number
+      remoteUri?: string
+      output?: string
+      version?: string
+      privateResource?: string
+    } | {
+      name?: string
+      retry?: number
+      timeout?: number
+      remoteUri: string
+      output?: string
+      version?: string
+      privateResource?: string
+    }) {
+      const { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs', version, privateResource } = options
+
+      if (remoteUri)
+        return await ofetch(remoteUri, { responseType: 'text', retry, timeout })
+
+      const key = `${name}@${version}`
+      return await Promise.any([
+        ofetch(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+        ofetch(`https://unpkg.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+        ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+        ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+        ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+        privateResource && ofetch(`${privateResource}/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+      ].filter(Boolean))
+    },
+  }
+}
+
 export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
   return {
     async fetch(options: {
