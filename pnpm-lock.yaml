@@ -12,8 +12,8 @@ importers:
         specifier: ^3.5.1
         version: 3.5.1(@typescript-eslint/utils@8.5.0(eslint@9.10.0)(typescript@4.9.5))(@vue/compiler-sfc@3.4.21)(eslint@9.10.0)(typescript@4.9.5)(vitest@0.15.2)
       '@simon_he/latest-version':
-        specifier: ^0.1.4
-        version: 0.1.4
+        specifier: ^0.1.5
+        version: 0.1.5
       '@types/node':
         specifier: ^18.19.50
         version: 18.19.50
@@ -503,8 +503,8 @@ packages:
     resolution: {integrity: sha512-cq8o4cWH0ibXh9VGi5P20Tu9XF/0fFXl9EUinr9QfTM7a7p0oTA4iJRCQWppXR1Pg8dSM0UCItCkPwsk9qWWYA==}
     engines: {node: ^12.20.0 || ^14.18.0 || >=16.0.0}
 
-  '@simon_he/latest-version@0.1.4':
-    resolution: {integrity: sha512-tquNNf92Grpk6t+v3H7klgkvol+PYZjwO2i+GKbgVGM2Io+BSR+4v9mE+XX83z71wTRXYE67vPo/xM5j4LsVmw==}
+  '@simon_he/latest-version@0.1.5':
+    resolution: {integrity: sha512-YN2vZc7an+6Fu3946EBWW8R7T2W3tqnzj7tKOHpMLbmlvYQEthhAn9ATOfRbVvZRsVRvgewGSaJJHIw7x+YBbg==}
 
   '@stylistic/eslint-plugin@2.8.0':
     resolution: {integrity: sha512-Ufvk7hP+bf+pD35R/QfunF793XlSRIC7USr3/EdgduK9j13i2JjmsM0LUz3/foS+jDYp2fzyWZA9N44CPur0Ow==}
@@ -2751,7 +2751,7 @@ snapshots:
 
   '@pkgr/core@0.1.1': {}
 
-  '@simon_he/latest-version@0.1.4': {}
+  '@simon_he/latest-version@0.1.5': {}
 
   '@stylistic/eslint-plugin@2.8.0(eslint@9.10.0)(typescript@4.9.5)':
     dependencies:
