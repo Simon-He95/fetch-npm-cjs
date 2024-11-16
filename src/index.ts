@@ -32,7 +32,7 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
       else if (name) {
         if (!version) {
           try {
-            version = await latestVersion(name, { timeout: 5000, concurrency: 3 })
+            version = await latestVersion(name, { concurrency: 3 })
           }
           catch (error: any) {
             throw new Error(`Failed to get the latest version of ${name}: ${error.message}`)
@@ -120,7 +120,7 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
       else if (name) {
         let version = ''
         try {
-          version = await latestVersion(name, { timeout: 5000, concurrency: 3 })
+          version = await latestVersion(name, { concurrency: 3 })
         }
         catch (error: any) {
           throw new Error(`Failed to get the latest version of ${name}: ${error.message}`)
