@@ -179,9 +179,7 @@ async function getTarballUrlFromRegistry(name: string): Promise<string> {
     const version = metadata['dist-tags'].latest
     return metadata.versions[version].dist.tarball
   }
-  else {
-    return metadata.dist.tarball
-  }
+  return metadata.dist.tarball
 }
 
 export async function getTarballUrlFromYarn(name: string): Promise<string> {
@@ -200,9 +198,7 @@ export async function getTarballUrlFromYarn(name: string): Promise<string> {
     const version = metadata['dist-tags'].latest
     return metadata.versions[version].dist.tarball
   }
-  else {
-    return metadata.dist.tarball
-  }
+  return metadata.dist.tarball
 }
 
 async function getTarballUrlFromTencent(name: string): Promise<string> {
@@ -221,9 +217,7 @@ async function getTarballUrlFromTencent(name: string): Promise<string> {
     const version = metadata['dist-tags'].latest
     return metadata.versions[version].dist.tarball
   }
-  else {
-    return metadata.dist.tarball
-  }
+  return metadata.dist.tarball
 }
 
 function requestAuth(tempDir: string) {
