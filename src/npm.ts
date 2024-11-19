@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, promises as fsp } from 'node:fs'
+import { createWriteStream, promises as fsp } from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
 import path from 'node:path'
@@ -70,7 +70,7 @@ export async function downloadWithNpmHttp(name: string, tempDir: string, tempFil
 export async function downloadWithHttp(name: string, tempDir: string, tempFile: string, retry: number, logger: any = console) {
   const tarballUrl = await Promise.any([
     retryAsync(() => getTarballUrlFromRegistry(name), retry),
-    // retryAsync(() => getTarballUrlFromYarn(name), retry),
+    retryAsync(() => getTarballUrlFromYarn(name), retry),
     retryAsync(() => getTarballUrlFromTencent(name), retry),
   ]).catch((error) => {
     logger.error(`[fetch-npm]: Failed to fetch tarball URL from all sources: ${error}`)
@@ -129,13 +129,12 @@ export async function runFromOther(name: string, retry: number, dist?: string, l
 
   // Get the package tarball URL
   const tgzPath = await Promise.any([
-    // downloadWithHttp(name, tempDir, name, retry, logger),
+    downloadWithHttp(name, tempDir, dirname, retry, logger),
     downloadWithNpmHttp(name, tempDir, dirname, retry, logger),
-    // downloadWitchPack(name, tempDir, retry, logger),
+    downloadWitchPack(name, tempDir, retry, logger),
   ])
   // Extract the tarball
   await tar.x({ file: tgzPath, cwd: tempDir })
-
 
   // Read package.json to get the main field
   const packageJsonPath = path.join(tempDir, 'package', 'package.json')
@@ -165,7 +164,7 @@ export async function runFromOther(name: string, retry: number, dist?: string, l
 }
 
 async function getTarballUrlFromRegistry(name: string): Promise<string> {
-  const registryUrl = `https://registry.npmjs.org/${name.replace('/', '%2F')}`
+  const registryUrl = `https://registry.npmjs.org/${name.replace(/@(\d+\.\d+\.\d+)/, '/$1')}`
   const data: Uint8Array[] = []
   await new Promise((resolve, reject) => {
     https.get(registryUrl, (response) => {
@@ -176,12 +175,17 @@ async function getTarballUrlFromRegistry(name: string): Promise<string> {
   })
 
   const metadata = JSON.parse(data.toString())
-  const version = metadata['dist-tags'].latest
-  return metadata.versions[version].dist.tarball
+  if (metadata['dist-tags']) {
+    const version = metadata['dist-tags'].latest
+    return metadata.versions[version].dist.tarball
+  }
+  else {
+    return metadata.dist.tarball
+  }
 }
 
 export async function getTarballUrlFromYarn(name: string): Promise<string> {
-  const registryUrl = `https://registry.yarnpkg.com/${name.replace('/', '%2F')}`
+  const registryUrl = `https://registry.yarnpkg.com/${name.replace(/@(\d+\.\d+\.\d+)/, '/$1')}`
   const data: Uint8Array[] = []
   await new Promise((resolve, reject) => {
     https.get(registryUrl, (response) => {
@@ -192,12 +196,17 @@ export async function getTarballUrlFromYarn(name: string): Promise<string> {
   })
 
   const metadata = JSON5.parse(data.toString())
-  const version = metadata['dist-tags'].latest
-  return metadata.versions[version].dist.tarball
+  if (metadata['dist-tags']) {
+    const version = metadata['dist-tags'].latest
+    return metadata.versions[version].dist.tarball
+  }
+  else {
+    return metadata.dist.tarball
+  }
 }
 
 async function getTarballUrlFromTencent(name: string): Promise<string> {
-  const registryUrl = `https://mirrors.cloud.tencent.com/npm/${name.replace('/', '%2F')}`
+  const registryUrl = `https://mirrors.cloud.tencent.com/npm/${name.replace(/@(\d+\.\d+\.\d+)/, '/$1')}`
   const data: Uint8Array[] = []
   await new Promise((resolve, reject) => {
     https.get(registryUrl, (response) => {
@@ -208,8 +217,13 @@ async function getTarballUrlFromTencent(name: string): Promise<string> {
   })
 
   const metadata = JSON5.parse(data.toString())
-  const version = metadata['dist-tags'].latest
-  return metadata.versions[version].dist.tarball
+  if (metadata['dist-tags']) {
+    const version = metadata['dist-tags'].latest
+    return metadata.versions[version].dist.tarball
+  }
+  else {
+    return metadata.dist.tarball
+  }
 }
 
 function requestAuth(tempDir: string) {
