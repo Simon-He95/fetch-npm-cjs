@@ -1,5 +1,6 @@
 import { latestVersion } from '@simon_he/latest-version'
 import { ofetch } from 'ofetch'
+import { runFromOther } from './npm'
 
 export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>()) {
   return {
@@ -21,6 +22,7 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
       privateResource?: string
     }) {
       let { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs', version, privateResource } = options
+      debugger
       let scriptContent
       if (remoteUri) {
         const key = remoteUri
@@ -42,11 +44,12 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
         scriptContent = cacheFetch.has(key)
           ? cacheFetch.get(key)
           : await Promise.any([
-            ofetch(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            ofetch(`https://unpkg.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+            // ofetch(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+            // ofetch(`https://unpkg.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+            // ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+            // ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+            // ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+            runFromOther(key, retry, output),
             privateResource && ofetch(`${privateResource}/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
           ].filter(Boolean))
         cacheFetch.set(key, scriptContent)
@@ -95,6 +98,7 @@ export async function fetchFromCjsForCommonIntellisense(options: {
     ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
     ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
     ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
+    runFromOther(key, retry, output),
     privateResource && ofetch(`${privateResource}/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
   ].filter(Boolean))
 }
@@ -144,3 +148,11 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
     },
   }
 }
+
+const { fetch } = fetchFromCjs()
+const count = 1
+const result = await Promise.all(Array.from({ length: count }).map(() => fetch({
+  name: '@simon_he/white-list',
+  retry: 20
+})))
+console.log({result})
