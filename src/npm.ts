@@ -7,19 +7,18 @@ import JSON5 from 'json5'
 import { jsShell } from 'lazy-js-utils/dist/node'
 import * as tar from 'tar'
 
-export async function downloadWitchPack(name: string, tempDir: string, retry: number, logger: any = console) {
-  await retryAsync(() => {
-    return new Promise((resolve, reject) => {
-      const { result, status } = jsShell(`npm pack ${name} --pack-destination ${tempDir}`)
-      if (status !== 0) {
-        logger.error(result)
-        reject(result)
-      }
-      else {
-        resolve(true)
-      }
-    })
-  }, retry)
+export async function downloadWitchPack(name: string, tempDir: string, logger: any = console) {
+  await fsp.mkdir(tempDir, { recursive: true })
+  await new Promise((resolve, reject) => {
+    const { result, status } = jsShell(`npm pack ${name} --pack-destination ${tempDir}`)
+    if (status !== 0) {
+      logger.error(result)
+      reject(result)
+    }
+    else {
+      resolve(true)
+    }
+  })
   if (name.startsWith('@'))
     name = name.slice(1)
   const tarballPattern = `${name.replace(/[/@]/g, '-')}.tgz`
@@ -27,19 +26,18 @@ export async function downloadWitchPack(name: string, tempDir: string, retry: nu
   return path.join(tempDir, tarballPath)
 }
 
-export async function downloadWithNpmHttp(name: string, tempDir: string, tempFile: string, retry: number, logger: any = console) {
-  const tarballUrl = await retryAsync(async () => {
-    return new Promise((resolve, reject) => {
-      const { result, status } = jsShell(`npm view ${name} dist.tarball`)
-      if (status !== 0) {
-        logger.error(result)
-        reject(result)
-      }
-      else {
-        resolve(result)
-      }
-    })
-  }, retry)
+export async function downloadWithNpmHttp(name: string, tempDir: string, tempFile: string, logger: any = console) {
+  await fsp.mkdir(tempDir, { recursive: true })
+  const tarballUrl = await new Promise((resolve, reject) => {
+    const { result, status } = jsShell(`npm view ${name} dist.tarball`)
+    if (status !== 0) {
+      logger.error(result)
+      reject(result)
+    }
+    else {
+      resolve(result)
+    }
+  })
 
   if (!tarballUrl)
     return ''
@@ -48,30 +46,27 @@ export async function downloadWithNpmHttp(name: string, tempDir: string, tempFil
   const tgzPath = path.join(tempDir, `${tempFile.replace(/@\d+\.\d+\.\d+/, '')}.tgz`)
   const tgzFile = createWriteStream(tgzPath)
 
-  await retryAsync(() => new Promise<void>((resolve, reject) => {
+  return new Promise((resolve, reject) => {
+    tgzFile.on('error', reject)
     lib.get(tarballUrl, (response) => {
       response.pipe(tgzFile)
       tgzFile.on('finish', () => {
         tgzFile.close()
-        resolve()
+        resolve(tgzPath)
       })
     }).on('error', (error) => {
-      fsp.unlink(tgzPath).catch((error) => {
-        reject(error)
-      })
       tgzFile.close()
       reject(error)
     })
-  }), retry)
-
-  return tgzPath
+  })
 }
 
-export async function downloadWithHttp(name: string, tempDir: string, tempFile: string, retry: number, logger: any = console) {
+export async function downloadWithHttp(name: string, tempDir: string, tempFile: string, logger: any = console) {
+  await fsp.mkdir(tempDir, { recursive: true })
   const tarballUrl = await Promise.any([
-    retryAsync(() => getTarballUrlFromRegistry(name), retry),
-    retryAsync(() => getTarballUrlFromYarn(name), retry),
-    retryAsync(() => getTarballUrlFromTencent(name), retry),
+    getTarballUrlFromRegistry(name),
+    getTarballUrlFromYarn(name),
+    getTarballUrlFromTencent(name),
   ]).catch((error) => {
     logger.error(`[fetch-npm]: Failed to fetch tarball URL from all sources: ${error}`)
     throw error
@@ -84,22 +79,18 @@ export async function downloadWithHttp(name: string, tempDir: string, tempFile: 
   const tgzPath = path.join(tempDir, `${tempFile}.tgz`)
   const tgzFile = createWriteStream(tgzPath)
 
-  await retryAsync(() => new Promise<void>((resolve, reject) => {
+  return new Promise((resolve, reject) => {
+    tgzFile.on('error', reject)
     lib.get(tarballUrl, (response) => {
       response.pipe(tgzFile)
       tgzFile.on('finish', () => {
         tgzFile.close()
-        resolve()
+        resolve(tgzPath)
       })
     }).on('error', (error) => {
-      fsp.unlink(tgzPath).catch((error) => {
-        reject(error)
-      })
       reject(error)
     })
-  }), retry)
-
-  return tgzPath
+  })
 }
 
 async function retryAsync<T>(fn: () => Promise<T>, retries: number): Promise<T> {
@@ -124,17 +115,16 @@ export async function runFromOther(name: string, retry: number, dist?: string, l
   if (dirname.startsWith('@'))
     dirname = dirname.slice(1)
   dirname = dirname.replace(/[/@]/g, '-')
-  const tempDir = path.join(url, '..', dirname)
+  const tempDir = path.join(url, '..', '__temp__')
   await fsp.mkdir(tempDir, { recursive: true })
 
   // Get the package tarball URL
-  const tgzPath = await Promise.any([
-    downloadWithHttp(name, tempDir, dirname, retry, logger),
-    downloadWithNpmHttp(name, tempDir, dirname, retry, logger),
-    downloadWitchPack(name, tempDir, retry, logger),
-  ])
-  // Extract the tarball
-  await tar.x({ file: tgzPath, cwd: tempDir })
+  const tgzPath = await retryAsync(async () => Promise.any([
+    downloadWithHttp(name, path.join(tempDir, 'http'), dirname, logger),
+    downloadWithNpmHttp(name, path.join(tempDir, 'npm'), dirname, logger),
+    downloadWitchPack(name, path.join(tempDir, 'pack'), logger),
+  ]), retry) as string
+  await tar.x({ file: tgzPath, cwd: tempDir, sync: true })
 
   // Read package.json to get the main field
   const packageJsonPath = path.join(tempDir, 'package', 'package.json')
@@ -155,7 +145,6 @@ export async function runFromOther(name: string, retry: number, dist?: string, l
   }
   // Read the main file content
   const mainFilePath = path.join(tempDir, 'package', mainFile)
-
   const mainFileContent = await fsp.readFile(mainFilePath, 'utf-8')
   // Clean up: remove the temporary directory and tarball
   await fsp.rm(tempDir, { recursive: true, force: true })

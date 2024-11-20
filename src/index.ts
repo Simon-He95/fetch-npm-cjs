@@ -92,12 +92,12 @@ export async function fetchFromCjsForCommonIntellisense(options: {
 
   const key = `${name}@${version}`
   return await Promise.any([
-    ofetch(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-    ofetch(`https://unpkg.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-    ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-    ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-    ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
     runFromOther(key, retry, output),
+    ofetch(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, { responseType: 'text', timeout }),
+    ofetch(`https://unpkg.com/${key}/dist/${output}`, { responseType: 'text', timeout }),
+    ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', timeout }),
+    ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', timeout }),
+    ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', timeout }),
     privateResource && ofetch(`${privateResource}/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
   ].filter(Boolean))
 }
