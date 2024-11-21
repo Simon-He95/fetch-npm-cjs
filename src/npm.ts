@@ -4,40 +4,32 @@ import https from 'node:https'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import JSON5 from 'json5'
+import { retryAsync } from 'lazy-js-utils'
 import { jsShell } from 'lazy-js-utils/dist/node'
 import * as tar from 'tar'
 
 export async function downloadWitchPack(name: string, tempDir: string, logger: any = console) {
   await fsp.mkdir(tempDir, { recursive: true })
-  await new Promise((resolve, reject) => {
-    const { result, status } = jsShell(`npm pack ${name} --pack-destination ${tempDir}`)
-    if (status !== 0) {
-      logger.error(result)
-      reject(result)
-    }
-    else {
-      resolve(true)
-    }
-  })
+  const { result, status } = await jsShell(`npm pack ${name} --pack-destination ${tempDir}`)
+  if (status !== 0) {
+    logger.error(result)
+    return Promise.reject(result)
+  }
   if (name.startsWith('@'))
     name = name.slice(1)
-  const tarballPattern = `${name.replace(/[/@]/g, '-')}.tgz`
+  const tarballPattern = `${name.replace(/[/@]/g, '-')}`
   const [tarballPath] = await fsp.readdir(tempDir).then(files => files.filter(file => file.match(tarballPattern)))
   return path.join(tempDir, tarballPath)
 }
 
 export async function downloadWithNpmHttp(name: string, tempDir: string, tempFile: string, logger: any = console) {
   await fsp.mkdir(tempDir, { recursive: true })
-  const tarballUrl = await new Promise((resolve, reject) => {
-    const { result, status } = jsShell(`npm view ${name} dist.tarball`)
-    if (status !== 0) {
-      logger.error(result)
-      reject(result)
-    }
-    else {
-      resolve(result)
-    }
-  })
+  const { result, status } = await jsShell(`npm view ${name} dist.tarball`)
+  if (status !== 0) {
+    logger.error(result)
+    return Promise.reject(result)
+  }
+  const tarballUrl = result
 
   if (!tarballUrl)
     return ''
@@ -91,20 +83,6 @@ export async function downloadWithHttp(name: string, tempDir: string, tempFile: 
       reject(error)
     })
   })
-}
-
-async function retryAsync<T>(fn: () => Promise<T>, retries: number): Promise<T> {
-  try {
-    return await fn()
-  }
-  catch (error: any) {
-    if (retries > 0) {
-      return retryAsync(fn, retries - 1)
-    }
-    else {
-      throw error
-    }
-  }
 }
 const url = typeof __filename !== 'undefined' ? __filename : fileURLToPath(import.meta.url)
 
