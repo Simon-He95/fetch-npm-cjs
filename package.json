@@ -52,7 +52,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@simon_he/latest-version": "^0.1.12",
+    "@simon_he/latest-version": "^0.1.14",
     "json5": "^2.2.3",
     "lazy-js-utils": "^0.1.44"
   },
