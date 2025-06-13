@@ -9,7 +9,7 @@ describe('should', () => {
     })).toBeTypeOf('string')
   })
 
-  it('fetchFromCjs', async () => {
+  it('fetchFromCjs - @common-intellisense/element-ui2', async () => {
     const { fetch } = fetchFromCjs()
     expect(await fetch({
       name: '@common-intellisense/element-ui2',
@@ -17,6 +17,20 @@ describe('should', () => {
       {
         "elementUi2": [Function],
         "elementUi2Components": [Function],
+      }
+    `)
+  })
+
+  it('fetchFromCjs - @simon_he/white-list', async () => {
+    const { fetch } = fetchFromCjs()
+
+    expect(await fetch({ name: '@simon_he/white-list' })).toMatchInlineSnapshot(`
+      {
+        "getBackKey": [Function],
+        "getDeSecretKey": [Function],
+        "getKey": [Function],
+        "getSecretKey": [Function],
+        "getWhiteList": [Function],
       }
     `)
   })
