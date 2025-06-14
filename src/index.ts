@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer'
 import { ofetch } from 'ofetch'
 import { runFromOther } from './npm'
+import { latestVersion } from '@simon_he/latest-version'
 
 export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>()) {
   return {
@@ -34,7 +35,6 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
         if (!version) {
           try {
             // eslint-disable-next-line ts/no-require-imports
-            const { latestVersion } = require('@simon_he/latest-version')
             version = await latestVersion(name, { concurrency: 3 })
           }
           catch (error: any) {
@@ -140,7 +140,6 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
         if (!version) {
           try {
             // eslint-disable-next-line ts/no-require-imports
-            const { latestVersion } = require('@simon_he/latest-version')
             version = await latestVersion(name, { concurrency: 3 })
           }
           catch (error: any) {

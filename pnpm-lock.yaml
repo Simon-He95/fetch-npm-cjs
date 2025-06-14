@@ -4,11 +4,11 @@ importers:
 
   .:
     specifiers:
-      '@antfu/eslint-config': ^3.11.2
+      '@antfu/eslint-config': ^3.16.0
       '@simon_he/latest-version': ^0.1.14
-      '@types/node': ^18.19.67
+      '@types/node': ^18.19.111
       bumpp: ^8.2.1
-      eslint: ^9.16.0
+      eslint: ^9.28.0
       json5: ^2.2.3
       lazy-js-utils: ^0.1.44
       lint-staged: ^13.3.0
