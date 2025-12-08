@@ -1,7 +1,160 @@
 import { Buffer } from 'node:buffer'
+import process from 'node:process'
+import { latestVersion } from '@simon_he/latest-version'
 import { ofetch } from 'ofetch'
 import { runFromOther } from './npm'
-import { latestVersion } from '@simon_he/latest-version'
+
+const CLI_FALLBACK_ENV = typeof process !== 'undefined' ? process.env.FETCH_NPM_ALLOW_CLI_FALLBACK : undefined
+const REMOTE_IMPORT_ENV = typeof process !== 'undefined' ? process.env.FETCH_NPM_ALLOW_REMOTE_ESM : undefined
+const hasNativeNetworkImportSupport = typeof window !== 'undefined'
+  || typeof (globalThis as any).Deno !== 'undefined'
+  || typeof (globalThis as any).Bun !== 'undefined'
+  || Boolean((process as any)?.features?.networkImport)
+const latestVersionCache = new Map<string, Promise<string>>()
+
+function resolveCliFallbackFlag(option?: boolean) {
+  if (typeof option === 'boolean')
+    return option
+  if (CLI_FALLBACK_ENV === 'true')
+    return true
+  if (CLI_FALLBACK_ENV === 'false')
+    return false
+  return true
+}
+
+function resolveRemoteImportFlag(option?: boolean) {
+  if (typeof option === 'boolean')
+    return option
+  if (REMOTE_IMPORT_ENV === 'true')
+    return true
+  if (REMOTE_IMPORT_ENV === 'false')
+    return false
+  return hasNativeNetworkImportSupport
+}
+
+function resolveLatestVersionWithCache(name: string) {
+  let pending = latestVersionCache.get(name)
+  if (!pending) {
+    pending = latestVersion(name, { concurrency: 3 }).catch((error) => {
+      latestVersionCache.delete(name)
+      throw error
+    })
+    latestVersionCache.set(name, pending)
+  }
+  return pending
+}
+
+type AbortableTextFactory = () => { promise: Promise<string>, abort: () => void }
+
+function createTextFetchFactory(url: string, retry: number, timeout?: number): AbortableTextFactory {
+  return () => {
+    const controller = new AbortController()
+    const promise = ofetch(url, {
+      responseType: 'text',
+      retry,
+      timeout,
+      signal: controller.signal,
+    })
+    return {
+      promise,
+      abort: () => controller.abort(),
+    }
+  }
+}
+
+async function importWithBackOff(urls: string[], delay: number) {
+  const remaining = [...urls]
+  const errors: any[] = []
+
+  while (remaining.length) {
+    const url = remaining.shift()
+    if (!url)
+      break
+
+    try {
+      return await import(url)
+    }
+    catch (error) {
+      errors.push(error)
+      if (remaining.length)
+        await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+
+  throw new AggregateError(errors, 'All ESM sources failed')
+}
+
+function createAbortError(reason?: unknown) {
+  if (reason instanceof Error)
+    return reason
+  return new Error('Aborted')
+}
+
+async function raceTextFactories(factories: AbortableTextFactory[], externalSignal?: AbortSignal) {
+  if (!factories.length)
+    throw new Error('No sources provided')
+
+  return await new Promise<string>((resolve, reject) => {
+    let settled = false
+    let remaining = factories.length
+    const aborts: Array<() => void> = []
+    const errors: any[] = []
+    function cleanup() {
+      settled = true
+      if (externalSignal)
+        externalSignal.removeEventListener('abort', onAbort)
+    }
+    function rejectWithErrors() {
+      cleanup()
+      reject(new AggregateError(errors.filter(Boolean), 'All sources failed'))
+    }
+    function onAbort() {
+      if (settled)
+        return
+      aborts.forEach(abort => abort?.())
+      cleanup()
+      reject(createAbortError(externalSignal?.reason))
+    }
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        onAbort()
+        return
+      }
+      externalSignal.addEventListener('abort', onAbort, { once: true })
+    }
+
+    factories.forEach((factory, index) => {
+      let instance: { promise: Promise<string>, abort: () => void }
+      try {
+        instance = factory()
+      }
+      catch (error) {
+        errors[index] = error
+        remaining -= 1
+        if (!remaining && !settled)
+          reject(new AggregateError(errors.filter(Boolean), 'All sources failed'))
+        return
+      }
+
+      aborts[index] = instance.abort
+      instance.promise.then((value) => {
+        if (settled)
+          return
+        settled = true
+        aborts.forEach((abort, abortIndex) => {
+          if (abortIndex !== index)
+            abort?.()
+        })
+        resolve(value)
+      }).catch((error) => {
+        errors[index] = error
+        remaining -= 1
+        if (!remaining && !settled)
+          rejectWithErrors()
+      })
+    })
+  })
+}
 
 export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>()) {
   return {
@@ -13,6 +166,8 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
       output?: string
       version?: string
       privateResource?: string
+      allowCliFallback?: boolean
+      signal?: AbortSignal
     } | {
       name?: string
       retry?: number
@@ -21,39 +176,55 @@ export function fetchFromCjs(cacheFetch = new Map<string, string | undefined>())
       output?: string
       version?: string
       privateResource?: string
+      allowCliFallback?: boolean
+      signal?: AbortSignal
     }) {
-      let { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs', version, privateResource } = options
+      let { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs', version, privateResource, allowCliFallback, signal } = options
       let scriptContent
       if (remoteUri) {
         const key = remoteUri
         scriptContent = cacheFetch.has(key)
           ? cacheFetch.get(key)
-          : await ofetch(remoteUri, { responseType: 'text', retry, timeout })
+          : await ofetch(remoteUri, { responseType: 'text', retry, timeout, signal })
         cacheFetch.set(key, scriptContent)
       }
       else if (name) {
         if (!version) {
           try {
-            // eslint-disable-next-line ts/no-require-imports
-            version = await latestVersion(name, { concurrency: 3 })
+            version = await resolveLatestVersionWithCache(name)
           }
           catch (error: any) {
             throw new Error(`Failed to get the latest version of ${name}: ${error.message}`)
           }
         }
         const key = `${name}@${version}`
-        scriptContent = cacheFetch.has(key)
-          ? cacheFetch.get(key)
-          : await Promise.any([
-            ofetch(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            ofetch(`https://unpkg.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-            runFromOther(key, retry, output),
-            privateResource && ofetch(`${privateResource}/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-          ].filter(Boolean))
-        cacheFetch.set(key, scriptContent)
+        const enableCliFallback = resolveCliFallbackFlag(allowCliFallback)
+        const execRunFromOther = () => runFromOther(key, retry, output, console, { enableCliFallback })
+        if (cacheFetch.has(key)) {
+          scriptContent = cacheFetch.get(key)
+        }
+        else {
+          const cdnFactories = [
+            createTextFetchFactory(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, retry, timeout),
+            createTextFetchFactory(`https://unpkg.com/${key}/dist/${output}`, retry, timeout),
+            createTextFetchFactory(`https://registry.npmmirror.com/${key}/dist/${output}`, retry, timeout),
+            createTextFetchFactory(`https://registry.npmjs.org/${key}/dist/${output}`, retry, timeout),
+            createTextFetchFactory(`https://r.cnpmjs.org/${key}/dist/${output}`, retry, timeout),
+            privateResource && createTextFetchFactory(`${privateResource}/${key}/dist/${output}`, retry, timeout),
+          ].filter((factory): factory is AbortableTextFactory => Boolean(factory))
+
+          try {
+            scriptContent = cdnFactories.length
+              ? await raceTextFactories(cdnFactories, signal)
+              : await execRunFromOther()
+          }
+          catch (error) {
+            if (signal?.aborted)
+              throw error
+            scriptContent = await execRunFromOther()
+          }
+          cacheFetch.set(key, scriptContent)
+        }
       }
       if (!scriptContent)
         return {}
@@ -78,6 +249,8 @@ export async function fetchFromCjsForCommonIntellisense(options: {
   output?: string
   version?: string
   privateResource?: string
+  allowCliFallback?: boolean
+  signal?: AbortSignal
 } | {
   name?: string
   retry?: number
@@ -86,22 +259,36 @@ export async function fetchFromCjsForCommonIntellisense(options: {
   output?: string
   version?: string
   privateResource?: string
+  allowCliFallback?: boolean
+  signal?: AbortSignal
 }) {
-  const { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs', version, privateResource } = options
+  const { name, retry = 3, timeout = 5000, remoteUri, output = 'index.cjs', version, privateResource, allowCliFallback, signal } = options
 
   if (remoteUri)
-    return await ofetch(remoteUri, { responseType: 'text', retry, timeout })
+    return await ofetch(remoteUri, { responseType: 'text', retry, timeout, signal })
 
   const key = `${name}@${version}`
-  return await Promise.any([
-    runFromOther(key, retry, output),
-    ofetch(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-    ofetch(`https://unpkg.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-    ofetch(`https://registry.npmmirror.com/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-    ofetch(`https://registry.npmjs.org/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-    ofetch(`https://r.cnpmjs.org/${key}/dist/${output}`, { responseType: 'text', retry }),
-    privateResource && ofetch(`${privateResource}/${key}/dist/${output}`, { responseType: 'text', retry, timeout }),
-  ].filter(Boolean))
+  const enableCliFallback = resolveCliFallbackFlag(allowCliFallback)
+  const execRunFromOther = () => runFromOther(key, retry, output, console, { enableCliFallback })
+  const cdnFactories = [
+    createTextFetchFactory(`https://cdn.jsdelivr.net/npm/${key}/dist/${output}`, retry, timeout),
+    createTextFetchFactory(`https://unpkg.com/${key}/dist/${output}`, retry, timeout),
+    createTextFetchFactory(`https://registry.npmmirror.com/${key}/dist/${output}`, retry, timeout),
+    createTextFetchFactory(`https://registry.npmjs.org/${key}/dist/${output}`, retry, timeout),
+    createTextFetchFactory(`https://r.cnpmjs.org/${key}/dist/${output}`, retry, timeout),
+    privateResource && createTextFetchFactory(`${privateResource}/${key}/dist/${output}`, retry, timeout),
+  ].filter((factory): factory is AbortableTextFactory => Boolean(factory))
+
+  try {
+    if (!cdnFactories.length)
+      return await execRunFromOther()
+    return await raceTextFactories(cdnFactories, signal)
+  }
+  catch (error) {
+    if (signal?.aborted)
+      throw error
+    return await execRunFromOther()
+  }
 }
 
 export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
@@ -114,6 +301,7 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
       output?: string
       version?: string
       privateResource?: string
+      allowRemoteImport?: boolean
     } | {
       name?: string
       retry?: number
@@ -122,8 +310,9 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
       output?: string
       version?: string
       privateResource?: string
+      allowRemoteImport?: boolean
     }) {
-      let { name, retry = 3, timeout = 5000, remoteUri, output = 'index.mjs', version, privateResource } = options
+      let { name, retry = 3, timeout = 5000, remoteUri, output = 'index.mjs', version, privateResource, allowRemoteImport } = options
       let moduleExports!: any
 
       if (remoteUri) {
@@ -139,8 +328,7 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
       else if (name) {
         if (!version) {
           try {
-            // eslint-disable-next-line ts/no-require-imports
-            version = await latestVersion(name, { concurrency: 3 })
+            version = await resolveLatestVersionWithCache(name)
           }
           catch (error: any) {
             throw new Error(`Failed to get the latest version of ${name}: ${error.message}`)
@@ -148,6 +336,7 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
         }
 
         const key = `${name}@${version}`
+        const enableRemoteImport = resolveRemoteImportFlag(allowRemoteImport)
         if (cacheFetch.has(key)) {
           moduleExports = cacheFetch.get(key)
         }
@@ -184,31 +373,8 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
             `https://cdn.jsdelivr.net/npm/${key}`,
           ].filter(Boolean)
 
-          // 使用 Promise.any 但添加更好的错误处理
-          try {
-            moduleExports = await Promise.any(
-              esmSources.map(async (url) => {
-                if (!url)
-                  return Promise.reject(new Error('Invalid URL'))
-                try {
-                  return await import(url)
-                }
-                catch (error) {
-                  // 如果是网络错误或 404，快速失败
-                  if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-                    throw error
-                  }
-                  // 对于其他错误，也快速失败
-                  throw new Error(`Failed to import from ${url}: ${error}`)
-                }
-              }),
-            )
-          }
-          // eslint-disable-next-line unused-imports/no-unused-vars
-          catch (allErrors) {
-            // 如果所有 ESM 来源都失败，尝试回退到动态转换 CJS
+          const loadFromCjsFallback = async () => {
             try {
-              // 获取 CJS 版本并尝试转换
               const cjsContent = await fetchFromCjsForCommonIntellisense({
                 name,
                 version,
@@ -218,12 +384,10 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
                 privateResource,
               })
 
-              // 创建一个简单的 ESM 包装器
               const esmWrapper = `
                 const module = { exports: {} };
                 ${cjsContent}
                 export default module.exports;
-                // 动态导出所有属性
                 if (module.exports && typeof module.exports === 'object') {
                   for (const key in module.exports) {
                     if (key !== 'default') {
@@ -233,14 +397,17 @@ export function fetchFromMjs(cacheFetch = new Map<string, any>()) {
                 }
               `
 
-              // 使用 data URL 动态导入
               const dataUrl = `data:text/javascript;base64,${Buffer.from(esmWrapper).toString('base64')}`
-              moduleExports = await import(dataUrl)
+              return await import(dataUrl)
             }
             catch (fallbackError: any) {
               throw new Error(`Failed to load ${name}@${version} as ESM. All sources failed. Last error: ${fallbackError.message}`)
             }
           }
+
+          moduleExports = enableRemoteImport
+            ? await importWithBackOff(esmSources, 1500).catch(loadFromCjsFallback)
+            : await loadFromCjsFallback()
 
           cacheFetch.set(key, moduleExports)
         }
